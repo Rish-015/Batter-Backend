@@ -1,0 +1,334 @@
+### =========================
+### Health Check
+### =========================
+GET http://localhost:5000
+
+
+### =========================
+### USERS
+POST http://localhost:5000/api/auth/send-otp
+Body: { "phone": "9999999999" }
+Response: { "message": "OTP sent", "otp": "XXXXXX" }
+### =========================
+
+### Create / Login User
+POST http://localhost:5000/api/users
+Content-Type: application/json
+
+{
+  "name": "Risheeth",
+  "phone": "6383781029",
+  "email": "risheeth@gmail.com",
+  "address_text": "Chennai"
+}
+
+###
+
+### Get All Users
+GET http://localhost:5000/api/users
+
+### Get All Users (ADMIN)
+GET http://localhost:5000/api/users/admin/all 
+
+
+
+### =========================
+### PRODUCTS
+### =========================
+
+### Create Product (WITH IMAGE)
+POST http://localhost:5000/api/products
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="name"
+
+Premium Batter
+--boundary
+Content-Disposition: form-data; name="price"
+
+60
+--boundary
+Content-Disposition: form-data; name="weight"
+
+500g
+--boundary
+Content-Disposition: form-data; name="image"; filename="premium-batter.jpg"
+Content-Type: image/jpeg
+
+< ./idly-batter.jpg
+--boundary--
+
+
+###
+
+### Get All Products
+GET http://localhost:5000/api/products
+
+
+
+### =========================
+### STOCK
+### =========================
+
+### Add / Update Stock (Admin)
+POST http://localhost:5000/api/stock
+Content-Type: application/json
+
+{
+  "product_id": "6981f6d10e315ef28c91cbcb",
+  "available_quantity": 100,
+  "date": "2026-02-02"
+}
+
+###
+
+### Get All Stock
+GET http://localhost:5000/api/stock
+
+###
+
+### Get Stock by Date
+GET http://localhost:5000/api/stock?date=2026-02-02
+
+###
+
+### Get Stock by Product
+GET http://localhost:5000/api/stock?product_id=697f7c7db2df7d300aefd2a2
+
+###=========================
+### DELIVERY ZONES
+###=========================
+
+###Create Delivery Zone (ADMIN)
+POST http://localhost:5000/api/zones
+Content-Type: application/json
+
+{
+  "name": "Anna Nagar",
+  "pincode": "600040"
+}
+
+### Get All Delivery Zones
+GET http://localhost:5000/api/zones
+
+
+###=========================
+###DELIVERY SLOTS (MASTER)
+###=========================
+
+###Create Morning Slot (RUN ONCE)
+POST http://localhost:5000/api/slots
+Content-Type: application/json
+
+{
+  "name": "Morning",
+  "start_time": "07:00",
+  "end_time": "10:00"
+}
+
+###Create Evening Slot (RUN ONCE)
+POST http://localhost:5000/api/slots
+Content-Type: application/json
+
+{
+  "name": "Afternoon",
+  "start_time": "12:00",
+  "end_time": "15:00"
+}
+
+### Get All Delivery Slots
+GET http://localhost:5000/api/slots
+
+###=========================
+### SLOT AVAILABILITY
+###=========================
+
+###Create Slot Availability (ADMIN)
+POST http://localhost:5000/api/slot-availability
+Content-Type: application/json
+
+{
+  "zone_id": "6981f74e0e315ef28c91cbdc",
+  "slot_id": "6981fa5c44c00eaeecfb50f0",
+  "date": "2026-02-02",
+  "max_orders": 20,
+  "available_orders": 20
+}
+
+### Get Available Slots for Zone + Date (APP)
+GET http://localhost:5000/api/slot-availability?zone_id=6981f74e0e315ef28c91cbdc&date=2026-02-02
+
+
+### =========================
+### ORDERS
+### =========================
+
+### FIRST: Create Slot Availability (ADMIN) - Required before placing orders
+POST http://localhost:5000/api/slot-availability
+Content-Type: application/json
+
+{
+  "zone_id": "6981f74e0e315ef28c91cbdc",
+  "slot_id": "6981fa5c44c00eaeecfb50f0",
+  "date": "2026-02-02",
+  "max_orders": 20,
+  "available_orders": 20
+}
+
+###
+
+### Place New Order (USER) - Use the _id from slot availability creation above
+POST http://localhost:5000/api/orders
+Content-Type: application/json
+
+{
+  "user_id": "6981f6a60e315ef28c91cbc4",
+  "zone_id": "6981f74e0e315ef28c91cbdc",
+  "slot_availability_id": "67ba1234567890abcdef1234",
+  "delivery_date": "2026-02-02",
+  "address_text": "Anna Nagar, Chennai",
+  "payment_method": "COD",
+  "items": [
+    {
+      "product_id": "6981f6d10e315ef28c91cbcb",
+      "quantity": 2
+    }
+  ]
+}
+
+###
+
+### Get All Orders (ADMIN)
+GET http://localhost:5000/api/orders
+
+###
+
+### Get Orders by User ID
+GET http://localhost:5000/api/orders/user/6981f6a60e315ef28c91cbc4
+
+###
+
+### Update Order Status to CONFIRMED (ADMIN)
+PATCH http://localhost:5000/api/orders/697f87cbceff41c1ad7c2c99/status
+Content-Type: application/json
+
+{
+  "status": "CONFIRMED"
+}
+
+###
+
+### Assign Delivery Partner to Order (ADMIN)
+PATCH http://localhost:5000/api/orders/6981fca0bf1f68ba2aeaba29/assign
+Content-Type: application/json
+
+{
+  "partnerId": "6999c873a0e39e16eacf7e0d"
+}
+
+###
+
+### Update Order Status to OUT_FOR_DELIVERY (ADMIN)
+PATCH http://localhost:5000/api/orders/67ba1234567890abcdef5678/status
+Content-Type: application/json
+
+{
+  "status": "OUT_FOR_DELIVERY"
+}
+
+###
+
+### Update Order Status to DELIVERED (ADMIN) - Releases delivery partner
+PATCH http://localhost:5000/api/orders/67ba1234567890abcdef5678/status
+Content-Type: application/json
+
+{
+  "status": "DELIVERED"
+}
+
+###
+
+### Cancel Order (ADMIN) - Releases delivery partner if assigned
+PATCH http://localhost:5000/api/orders/67ba1234567890abcdef5678/status
+Content-Type: application/json
+
+{
+  "status": "CANCELLED"
+}
+
+###
+
+
+### =========================
+### DELIVERY PARTNERS
+### =========================
+
+### Create Delivery Partner (ADMIN)
+POST http://localhost:5000/api/delivery-partners
+Content-Type: application/json
+
+{
+  "name": "Rajesh Kumar",
+  "phone": "9876543210",
+  "vehicle_number": "TN01AB1234",
+  "zone_id": "6981f74e0e315ef28c91cbdc"
+}
+
+###
+
+### Get All Delivery Partners (ADMIN)
+GET http://localhost:5000/api/delivery-partners
+
+###
+
+### Get Active + Available Partners in Zone
+GET http://localhost:5000/api/delivery-partners?active=true&available=true&zone_id=6981f74e0e315ef28c91cbdc
+
+###
+
+### Get Partners by Zone
+GET http://localhost:5000/api/delivery-partners/zone/6981f74e0e315ef28c91cbdc
+
+###
+
+### Get Partner by ID
+GET http://localhost:5000/api/delivery-partners/6999c873a0e39e16eacf7e0d
+
+###
+
+### Update Partner Availability
+PUT http://localhost:5000/api/delivery-partners/6999c873a0e39e16eacf7e0d/availability
+Content-Type: application/json
+
+{
+  "is_available": true
+}
+
+###
+
+### Update Partner Details
+PUT http://localhost:5000/api/delivery-partners/6999c873a0e39e16eacf7e0d
+Content-Type: application/json
+
+{
+  "name": "Rajesh Kumar",
+  "phone": "9876543211"
+}
+
+###
+
+### Update Partner Active Status
+PUT http://localhost:5000/api/delivery-partners/6999c873a0e39e16eacf7e0d/active
+Content-Type: application/json
+
+{
+  "is_active": false
+}
+
+###
+
+### Deactivate Partner (Soft Delete)
+DELETE http://localhost:5000/api/delivery-partners/6999c873a0e39e16eacf7e0d
+
+###
