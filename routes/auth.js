@@ -68,6 +68,13 @@ router.post("/login", async (req, res) => {
 
     let user = await User.findOne({ phone: mobile });
 
+    if (user && !user.is_active) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is disabled",
+      });
+    }
+
     if (!user) {
       user = await User.create({
         phone: mobile,

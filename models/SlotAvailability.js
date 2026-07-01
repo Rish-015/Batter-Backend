@@ -9,11 +9,11 @@ const slotAvailabilitySchema = new mongoose.Schema(
     },
     slot_id: {
       type: mongoose.Schema.Types.ObjectId,
-      required: false // Set to false to support nested slots without master IDs
+      required: false
     },
     slot_name: {
       type: String,
-      required: true
+      required: false
     },
     date: {
       type: String, // YYYY-MM-DD
@@ -30,6 +30,10 @@ const slotAvailabilitySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+slotAvailabilitySchema.path("slot_name").validate(function validateSlotIdentifier(value) {
+  return Boolean(this.slot_id || value);
+}, "Either slot_id or slot_name is required");
 
 // 🔥 THIS LINE PREVENTS OverwriteModelError
 module.exports =

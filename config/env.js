@@ -12,7 +12,11 @@ function logSection(title) {
 
 function logStartupConfigChecks() {
   const coreVars = ["MONGO_URI", "JWT_SECRET"];
-  const paymentVars = ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET"];
+  const paymentVars = [
+    "RAZORPAY_KEY_ID",
+    "RAZORPAY_KEY_SECRET",
+    "RAZORPAY_WEBHOOK_SECRET",
+  ];
   const otpVars = ["MSG91_AUTH_KEY", "MSG91_TEMPLATE_ID"];
 
   logSection("STARTUP CONFIG CHECK");
@@ -31,9 +35,8 @@ function logStartupConfigChecks() {
 
   const missingCoreVars = coreVars.filter((name) => !process.env[name]);
   if (missingCoreVars.length > 0) {
-    console.warn(
-      "Missing core env vars:",
-      missingCoreVars.join(", ")
+    throw new Error(
+      `Missing required env vars: ${missingCoreVars.join(", ")}`
     );
   }
 

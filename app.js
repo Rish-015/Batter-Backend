@@ -26,6 +26,8 @@ const app = express();
 
 logStartupConfigChecks();
 
+const PORT = process.env.PORT || 5000;
+
 // =======================
 // CORS CONFIG
 // =======================
@@ -36,6 +38,9 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Preserve raw payloads for Razorpay callback signature verification.
+app.use("/api/payment/callback", express.raw({ type: "application/json" }));
 
 // =======================
 // MIDDLEWARE
@@ -53,25 +58,10 @@ app.use((req, res, next) => {
     "Full URL:",
     `${req.protocol}://${req.get("host")}${req.url}`
   );
-  if (process.env.NODE_ENV !== "production") {
-    console.log("Body:", req.body);
-  }
   console.log("========================");
 
   next();
 });
-
-// =======================
-// DATABASE CONNECTION
-// =======================
-connectDB()
-  .then(() => {
-    console.log("✅ MongoDB connected");
-    startSlotResetCron();
-  })
-  .catch((err) => {
-    console.error("❌ MongoDB connection failed:", err);
-  });
 
 // =======================
 // ROUTES
@@ -124,10 +114,21 @@ app.use((err, req, res, next) => {
 // =======================
 // SERVER START
 // =======================
-const PORT = process.env.PORT || 5000;
+async function bootstrap() {
+  try {
+    await connectDB();
+    console.log("✅ MongoDB connected");
+    startSlotResetCron();
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌐 Local access: http://localhost:${PORT}`);
-  console.log(`📱 Network access: http://192.168.1.34:${PORT}`);
-});
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌐 Local access: http://localhost:${PORT}`);
+      console.log(`📱 Network access: http://192.168.1.34:${PORT}`);
+    });
+  } catch (error) {
+    console.error("❌ Failed to start server:", error.message || error);
+    process.exit(1);
+  }
+}
+
+bootstrap();

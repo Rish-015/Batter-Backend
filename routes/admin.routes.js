@@ -5,6 +5,10 @@ const User = require('../models/User');
 const DeliveryPartner = require('../models/DeliveryPartner');
 const auth = require('../middleware/auth');
 
+function escapeRegex(input) {
+    return String(input).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * GLOBAL SEARCH (ADMIN)
  * Searches across Orders, Customers, and Partners
@@ -14,19 +18,18 @@ router.get('/global-search', auth, async (req, res) => {
         if (req.user.role !== 'admin') return res.status(403).json({ error: "Access denied" });
         
         const { q } = req.query;
-        if (!q || q.length < 2) return res.json({ orders: [], customers: [], partners: [] });
+        const searchTerm = String(q || '').trim().slice(0, 100);
+        if (!searchTerm || searchTerm.length < 2) return res.json({ orders: [], customers: [], partners: [] });
 
-        const regex = new RegExp(q, 'i');
+        const regex = new RegExp(escapeRegex(searchTerm), 'i');
+        const orderFilter = { "items.name": regex };
+
+        if (/^[a-fA-F0-9]{24}$/.test(searchTerm)) {
+            orderFilter._id = searchTerm;
+        }
 
         const [orders, customers, partners] = await Promise.all([
-            // Search Orders by ID (using string search on _id is tricky in Mongo, usually we search actual fields)
-            // But since _id is what we show, we'll try a regex on the hex string if possible or just search recent
-            Order.find({ 
-                $or: [
-                   { _id: { $regex: regex } },
-                   { "items.name": regex }
-                ]
-            }).limit(5).select('_id status total_price createdAt'),
+            Order.find(orderFilter).limit(5).select('_id status total_price createdAt'),
             
             // Search Customers
             User.find({ 

@@ -34,6 +34,53 @@ function getRazorpayErrorMessage(error) {
   );
 }
 
+function getCallbackPayload(req) {
+  if (Buffer.isBuffer(req.body)) {
+    const rawBody = req.body.toString("utf8");
+
+    if (!rawBody) {
+      return { body: {}, rawBody: "" };
+    }
+
+    try {
+      return { body: JSON.parse(rawBody), rawBody };
+    } catch {
+      return { body: {}, rawBody };
+    }
+  }
+
+  return {
+    body: req.body || {},
+    rawBody: JSON.stringify(req.body || {}),
+  };
+}
+
+function verifyPaymentSignature(orderId, paymentId, signature) {
+  if (!process.env.RAZORPAY_KEY_SECRET) {
+    return false;
+  }
+
+  const expectedSignature = crypto
+    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+    .update(`${orderId}|${paymentId}`)
+    .digest("hex");
+
+  return expectedSignature === signature;
+}
+
+function verifyWebhookSignature(rawBody, signature) {
+  if (!process.env.RAZORPAY_WEBHOOK_SECRET) {
+    return false;
+  }
+
+  const expectedSignature = crypto
+    .createHmac("sha256", process.env.RAZORPAY_WEBHOOK_SECRET)
+    .update(rawBody)
+    .digest("hex");
+
+  return expectedSignature === signature;
+}
+
 async function markPaymentFailed(orderId, reason) {
   return Payment.findOneAndUpdate(
     { orderId },
@@ -138,12 +185,7 @@ async function verifyPaymentHandler(req, res) {
       });
     }
 
-    const expectedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest("hex");
-
-    if (expectedSignature !== razorpay_signature) {
+    if (!verifyPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature)) {
       await markPaymentFailed(razorpay_order_id, "Invalid payment signature");
 
       return res.status(400).json({
@@ -185,16 +227,30 @@ async function verifyPaymentHandler(req, res) {
 
 router.post("/verify-payment", auth, verifyPaymentHandler);
 
-router.post("/callback/success", auth, verifyPaymentHandler);
-
-router.post("/callback/failure", auth, async (req, res) => {
+router.post("/callback/success", async (req, res) => {
   try {
-    const { razorpay_order_id, reason, razorpay_payment_id } = req.body;
+    const { body, rawBody } = getCallbackPayload(req);
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+    } = body;
 
-    if (!razorpay_order_id) {
+    if (!razorpay_order_id || !razorpay_payment_id) {
       return res.status(400).json({
         success: false,
-        message: "razorpay_order_id is required",
+        message: "razorpay_order_id and razorpay_payment_id are required",
+      });
+    }
+
+    const signatureValid = req.get("x-razorpay-signature")
+      ? verifyWebhookSignature(rawBody, req.get("x-razorpay-signature"))
+      : verifyPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature);
+
+    if (!signatureValid) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Razorpay signature",
       });
     }
 
@@ -207,10 +263,70 @@ router.post("/callback/failure", auth, async (req, res) => {
       });
     }
 
-    if (String(existingPayment.userId) !== String(req.user.userId)) {
-      return res.status(403).json({
+    if (existingPayment.status === "success") {
+      return res.status(200).json({
+        success: true,
+        message: "Payment already verified",
+        payment: existingPayment,
+      });
+    }
+
+    const payment = await Payment.findOneAndUpdate(
+      { orderId: razorpay_order_id },
+      {
+        paymentId: razorpay_payment_id || existingPayment.paymentId,
+        status: "success",
+      },
+      { new: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment verified successfully",
+      payment,
+    });
+  } catch (error) {
+    console.error("Callback success error:", error.message || error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to process payment callback",
+    });
+  }
+});
+
+router.post("/callback/failure", async (req, res) => {
+  try {
+    const { body, rawBody } = getCallbackPayload(req);
+    const { razorpay_order_id, reason, razorpay_payment_id, razorpay_signature } = body;
+
+    if (!razorpay_order_id) {
+      return res.status(400).json({
         success: false,
-        message: "This payment order does not belong to the authenticated user",
+        message: "razorpay_order_id is required",
+      });
+    }
+
+    if (req.get("x-razorpay-signature") && !verifyWebhookSignature(rawBody, req.get("x-razorpay-signature"))) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Razorpay signature",
+      });
+    }
+
+    if (razorpay_signature && razorpay_payment_id && !verifyPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Razorpay signature",
+      });
+    }
+
+    const existingPayment = await Payment.findOne({ orderId: razorpay_order_id });
+
+    if (!existingPayment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment order not found",
       });
     }
 

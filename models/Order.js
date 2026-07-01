@@ -92,7 +92,6 @@ const OrderSchema = new mongoose.Schema(
     payment_order_id: {
       type: String,
       default: null,
-      index: true,
     },
 
     payment_id: {

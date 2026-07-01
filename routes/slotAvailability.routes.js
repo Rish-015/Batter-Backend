@@ -1,11 +1,34 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const SlotAvailability = require("../models/SlotAvailability");
+const DeliverySlot = require("../models/DeliverySlot");
 const auth = require("../middleware/auth");
 
 const router = express.Router();
 
 function normalizeDate(date) {
-  return new Date(date).toISOString().split("T")[0];
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+
+  return parsedDate.toISOString().split("T")[0];
+}
+
+function buildSlotFilter(zone_id, slot_id, slot_name, date) {
+  const filter = {
+    zone_id,
+    date,
+  };
+
+  if (slot_id && mongoose.Types.ObjectId.isValid(slot_id)) {
+    filter.$or = [{ slot_id }, { slot_name: slot_id }];
+  } else if (slot_name) {
+    filter.slot_name = slot_name;
+  }
+
+  return filter;
 }
 
 /**
@@ -20,8 +43,13 @@ router.get("/admin/all", auth, async (req, res) => {
     const { date } = req.query;
     if (!date) return res.status(400).json({ error: "Date is required" });
 
+    const normalizedDate = normalizeDate(date);
+    if (!normalizedDate) {
+      return res.status(400).json({ error: "Invalid date" });
+    }
+
     const records = await SlotAvailability.find({
-      date: normalizeDate(date)
+      date: normalizedDate
     }).populate("slot_id").populate("zone_id");
 
     res.json(records);
@@ -45,11 +73,30 @@ router.post("/bulk-update", auth, async (req, res) => {
       return res.status(400).json({ error: "Updates array required" });
     }
 
-    const promises = updates.map(update => {
+    const promises = updates.map(async (update) => {
       const { zone_id, slot_id, slot_name, date, max_orders, available_orders } = update;
+      const normalizedDate = normalizeDate(date);
+
+      if (!zone_id || !normalizedDate || (!slot_id && !slot_name)) {
+        throw new Error("zone_id, a slot identifier, and a valid date are required");
+      }
+
+      const slotDoc =
+        slot_id && mongoose.Types.ObjectId.isValid(slot_id)
+          ? await DeliverySlot.findById(slot_id)
+          : null;
+
+      const resolvedSlotName = slot_name || slotDoc?.name;
       return SlotAvailability.findOneAndUpdate(
-        { zone_id, slot_name, date: normalizeDate(date) },
-        { slot_id, max_orders, available_orders },
+        buildSlotFilter(zone_id, slot_id, resolvedSlotName, normalizedDate),
+        {
+          $set: {
+            slot_id: slot_id || slotDoc?._id,
+            slot_name: resolvedSlotName,
+            max_orders,
+            available_orders,
+          },
+        },
         { upsert: true, new: true }
       );
     });
@@ -74,9 +121,14 @@ router.get("/", async (req, res) => {
       return res.status(400).json({ error: "zoneId and date are required" });
     }
 
+    const normalizedDate = normalizeDate(date);
+    if (!normalizedDate) {
+      return res.status(400).json({ error: "Invalid date" });
+    }
+
     const slots = await SlotAvailability.find({
       zone_id: zoneValue,
-      date: normalizeDate(date),
+      date: normalizedDate,
       available_orders: { $gt: 0 }
     }).populate("slot_id");
 
@@ -97,9 +149,26 @@ router.post("/", auth, async (req, res) => {
     }
     const { zone_id, slot_id, date, max_orders, available_orders } = req.body;
 
+    const normalizedDate = normalizeDate(date);
+    if (!zone_id || !normalizedDate || !slot_id) {
+      return res.status(400).json({ error: "zone_id, slot_id and a valid date are required" });
+    }
+
+    const slotDoc =
+      slot_id && mongoose.Types.ObjectId.isValid(slot_id)
+        ? await DeliverySlot.findById(slot_id)
+        : null;
+
     const record = await SlotAvailability.findOneAndUpdate(
-      { zone_id, slot_id, date: normalizeDate(date) },
-      { max_orders, available_orders },
+      buildSlotFilter(zone_id, slot_id, slotDoc?.name, normalizedDate),
+      {
+        $set: {
+          slot_id: slot_id || slotDoc?._id,
+          slot_name: slotDoc?.name,
+          max_orders,
+          available_orders,
+        },
+      },
       { upsert: true, new: true }
     );
 

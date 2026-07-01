@@ -12,7 +12,7 @@ const userSchema = new mongoose.Schema({
   name: { type: String, trim: true },
   phone: { type: String, required: true, unique: true, trim: true, index: true },
   email: { type: String },
-  password: { type: String }, // For admin login
+  password: { type: String, select: false },
   role: { 
     type: String, 
     enum: ['admin', 'customer', 'partner'], 
@@ -21,5 +21,14 @@ const userSchema = new mongoose.Schema({
   is_active: { type: Boolean, default: true },
   addresses: [addressSchema]
 }, { timestamps: true });
+
+function removeSensitiveFields(doc, ret) {
+  delete ret.password;
+  delete ret.__v;
+  return ret;
+}
+
+userSchema.set("toJSON", { transform: removeSensitiveFields });
+userSchema.set("toObject", { transform: removeSensitiveFields });
 
 module.exports = mongoose.model("User", userSchema);

@@ -143,7 +143,11 @@ router.post("/me/address", auth, async (req, res) => {
     });
 
     await user.save();
-    res.json(user);
+    const defaultAddress = user.addresses.find((address) => address.is_default) || user.addresses[0] || null;
+    res.json({
+      ...user.toJSON(),
+      default_address: defaultAddress,
+    });
   } catch (err) {
     res.status(500).json({ error: "Failed to add address" });
   }

@@ -119,16 +119,22 @@ router.post("/login-admin", async (req, res) => {
 
     if (!username || !password) {
       return res.status(400).json({ message: "Username and password required" });
-    }
-
-    // Find admin by email or phone (using email as username for admin)
-    const user = await User.findOne({ 
+      phone: mobile,
+      sid: msg91Response?.data?.message_id || msg91Response?.data?.sid || msg91Response?.data?.request_id || null,
+      data: {
+        mobile,
+        msg91: msg91Response,
+      },
       $or: [{ email: username }, { phone: username }],
       role: 'admin' 
-    });
+    }).select("+password");
 
     if (!user) {
       return res.status(401).json({ message: "Invalid admin credentials" });
+    }
+
+    if (!user.is_active) {
+      return res.status(403).json({ message: "Account is disabled" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
@@ -279,6 +285,13 @@ router.post("/verify-otp", async (req, res) => {
     let user = await User.findOne({ phone: mobile });
     const isNewUser = !user;
 
+    if (user && !user.is_active) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is disabled",
+      });
+    }
+
     if (!user) {
       user = await User.create({
         phone: mobile,
@@ -325,10 +338,14 @@ router.post("/verify-otp", async (req, res) => {
 router.post("/change-password", auth, async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
-    const user = await User.findById(req.user.userId);
+    const user = await User.findById(req.user.userId).select("+password is_active");
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!user.is_active) {
+      return res.status(403).json({ message: "Account is disabled" });
     }
 
     const isMatch = await bcrypt.compare(oldPassword, user.password);
